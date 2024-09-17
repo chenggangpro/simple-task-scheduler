@@ -10,7 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 
 /**
- * @author evans
+ * @author Gang Cheng
  * @version 1.0.0
  * @since 1.0.0
  */
@@ -28,20 +28,25 @@ public class StepExecutionRunnerTests {
 
     @Test
     void testRunWithNoException() {
-        StepExecutionRunner<String> stepExecutionRunner = new StepExecutionRunner<>(startPoint,
+        StepExecutionRunner<String> stepExecutionRunner = new StepExecutionRunner<>(TaskStepInfo.of(
+                "StepExecutionRunnerTests",
+                "testRunWithNoException"
+        ),
+                startPoint,
                 CompletableFuture.supplyAsync(() -> Optional.of(text)),
                 Executors.newSingleThreadExecutor(),
                 null
         );
         Assertions.assertNotNull(stepExecutionRunner);
-        Optional<String> optionalResult = stepExecutionRunner.run();
+        Optional<String> optionalResult = stepExecutionRunner.overAll().join();
         Assertions.assertTrue(optionalResult.isPresent());
         Assertions.assertEquals(optionalResult.get(), text);
     }
 
     @Test
     void testRunWithException() {
-        StepExecutionRunner<String> stepExecutionRunner = new StepExecutionRunner<>(startPoint,
+        StepExecutionRunner<String> stepExecutionRunner = new StepExecutionRunner<>(TaskStepInfo.of(
+                "StepExecutionRunnerTests", "testRunWithException"), startPoint,
                 CompletableFuture.supplyAsync(() -> {
                     Optional<String> optionalValue = Optional.of(text);
                     if (optionalValue.isPresent()) {
@@ -52,17 +57,21 @@ public class StepExecutionRunnerTests {
                 Executors.newSingleThreadExecutor(),
                 throwable -> {
                     String message = throwable.getMessage();
-                    Assertions.assertEquals(message,"Fake Error");
+                    Assertions.assertEquals(message, "Fake Error");
                 }
         );
         Assertions.assertNotNull(stepExecutionRunner);
-        Optional<String> optionalResult = stepExecutionRunner.run();
+        Optional<String> optionalResult = stepExecutionRunner.overAll().join();
         Assertions.assertTrue(optionalResult.isEmpty());
     }
 
     @Test
     void testRunWithExceptionNoHandler() {
-        StepExecutionRunner<String> stepExecutionRunner = new StepExecutionRunner<>(startPoint,
+        StepExecutionRunner<String> stepExecutionRunner = new StepExecutionRunner<>(TaskStepInfo.of(
+                "StepExecutionRunnerTests",
+                "testRunWithExceptionNoHandler"
+        ),
+                startPoint,
                 CompletableFuture.supplyAsync(() -> {
                     Optional<String> optionalValue = Optional.of(text);
                     if (optionalValue.isPresent()) {
@@ -74,35 +83,9 @@ public class StepExecutionRunnerTests {
                 null
         );
         Assertions.assertNotNull(stepExecutionRunner);
-        Assertions.assertThrows(RuntimeException.class,() -> {
-            stepExecutionRunner.run();
+        Assertions.assertThrows(RuntimeException.class, () -> {
+            stepExecutionRunner.overAll().join();
         });
     }
 
-    @Test
-    void testCancel(){
-        StepExecutionRunner<String> stepExecutionRunner = new StepExecutionRunner<>(startPoint,
-                CompletableFuture.supplyAsync(() -> Optional.of(text)),
-                Executors.newSingleThreadExecutor(),
-                throwable -> {
-                    System.out.println(throwable.getMessage());
-                }
-        );
-        Assertions.assertNotNull(stepExecutionRunner);
-        stepExecutionRunner.cancel();
-    }
-
-    @Test
-    void testMultipleRunOrCancel(){
-        StepExecutionRunner<String> stepExecutionRunner = new StepExecutionRunner<>(startPoint,
-                CompletableFuture.supplyAsync(() -> Optional.of(text)),
-                Executors.newSingleThreadExecutor(),
-                throwable -> {
-                    System.out.println(throwable.getMessage());
-                }
-        );
-        stepExecutionRunner.cancel();
-        Assertions.assertThrows(IllegalStateException.class,() -> stepExecutionRunner.run());
-        Assertions.assertThrows(IllegalStateException.class,() -> stepExecutionRunner.cancel());
-    }
 }

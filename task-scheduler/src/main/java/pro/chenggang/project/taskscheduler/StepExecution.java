@@ -1,6 +1,9 @@
 
 package pro.chenggang.project.taskscheduler;
 
+import lombok.NonNull;
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -10,6 +13,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+
+import static pro.chenggang.project.taskscheduler.TaskStep.executorToString;
 
 /**
  * The abstract Step execution.
@@ -25,26 +30,42 @@ public abstract class StepExecution<IN, OUT> {
     /**
      * New step execution.
      *
-     * @param <T>        the type parameter
-     * @param startPoint the start point
-     * @param source     the source
-     * @param executor   the executor
+     * @param <T>          the type parameter
+     * @param taskInfo     the task info
+     * @param taskStepInfo the task step info
+     * @param startPoint   the start point
+     * @param sourceFuture the source future
+     * @param executor     the executor
      * @return the step execution
      */
-    static <T> StepExecution<T, T> newStepExecution(CompletableFuture<Void> startPoint,
-                                                    Supplier<Optional<T>> source,
+    static <T> StepExecution<T, T> newStepExecution(@NonNull TaskInfo taskInfo,
+                                                    @NonNull TaskStepInfo taskStepInfo,
+                                                    @NonNull CompletableFuture<Void> startPoint,
+                                                    @NonNull CompletableFuture<Optional<T>> sourceFuture,
                                                     Executor executor) {
-        return new SourceExecution<>(startPoint, source, executor);
+        return new SourceExecution<>(taskInfo, taskStepInfo, startPoint, sourceFuture, executor);
     }
+
+    /**
+     * The Task info.
+     */
+    protected final TaskInfo taskInfo;
+
+    /**
+     * The Task step info.
+     */
+    protected final TaskStepInfo taskStepInfo;
 
     /**
      * The Start point.
      */
     protected final CompletableFuture<Void> startPoint;
+
     /**
-     * The Source.
+     * The source future.
      */
-    protected final CompletableFuture<Optional<IN>> source;
+    protected final CompletableFuture<Optional<IN>> sourceFuture;
+
     /**
      * The Current executor.
      */
@@ -53,16 +74,22 @@ public abstract class StepExecution<IN, OUT> {
     /**
      * Instantiates a new Step execution.
      *
-     * @param startPoint the start point
-     * @param source     the source
-     * @param executor   the executor
+     * @param taskInfo     the task info
+     * @param taskStepInfo the task step info
+     * @param startPoint   the start point
+     * @param sourceFuture the source future
+     * @param executor     the executor
      */
-    protected StepExecution(CompletableFuture<Void> startPoint,
-                            CompletableFuture<Optional<IN>> source,
+    protected StepExecution(@NonNull TaskInfo taskInfo,
+                            @NonNull TaskStepInfo taskStepInfo,
+                            @NonNull CompletableFuture<Void> startPoint,
+                            @NonNull CompletableFuture<Optional<IN>> sourceFuture,
                             Executor executor) {
+        this.taskInfo = taskInfo;
+        this.taskStepInfo = taskStepInfo;
         this.startPoint = startPoint;
-        this.source = source;
-        this.currentExecutor = Objects.nonNull(executor) ? executor : source.defaultExecutor();
+        this.sourceFuture = sourceFuture;
+        this.currentExecutor = Objects.nonNull(executor) ? executor : sourceFuture.defaultExecutor();
     }
 
     /**
@@ -78,8 +105,14 @@ public abstract class StepExecution<IN, OUT> {
      * @param predicate the predicate
      * @return the step execution
      */
-    public StepExecution<OUT, OUT> filter(Predicate<OUT> predicate) {
-        return new FilterExecution<>(this.startPoint, this.then(), this.currentExecutor, predicate);
+    public StepExecution<OUT, OUT> filter(@NonNull Predicate<OUT> predicate) {
+        return new FilterExecution<>(this.taskInfo,
+                this.taskStepInfo,
+                this.startPoint,
+                this.then(),
+                this.currentExecutor,
+                predicate
+        );
     }
 
     /**
@@ -88,8 +121,14 @@ public abstract class StepExecution<IN, OUT> {
      * @param validator the validator
      * @return the step execution
      */
-    public StepExecution<OUT, OUT> validate(Function<OUT, Optional<RuntimeException>> validator) {
-        return new ValidatorExecution<>(this.startPoint, this.then(), this.currentExecutor, validator);
+    public StepExecution<OUT, OUT> validate(@NonNull Function<OUT, Optional<RuntimeException>> validator) {
+        return new ValidatorExecution<>(this.taskInfo,
+                this.taskStepInfo,
+                this.startPoint,
+                this.then(),
+                this.currentExecutor,
+                validator
+        );
     }
 
     /**
@@ -99,8 +138,14 @@ public abstract class StepExecution<IN, OUT> {
      * @param transformFunction the transform function
      * @return the step execution
      */
-    public <R> StepExecution<OUT, R> transform(Function<OUT, Supplier<Optional<R>>> transformFunction) {
-        return new TransformExecution<>(this.startPoint, this.then(), this.currentExecutor, transformFunction);
+    public <R> StepExecution<OUT, R> transform(@NonNull Function<OUT, Supplier<Optional<R>>> transformFunction) {
+        return new TransformExecution<>(this.taskInfo,
+                this.taskStepInfo,
+                this.startPoint,
+                this.then(),
+                this.currentExecutor,
+                transformFunction
+        );
     }
 
     /**
@@ -110,8 +155,14 @@ public abstract class StepExecution<IN, OUT> {
      * @param convertFunction the convert function
      * @return the step execution
      */
-    public <R> StepExecution<OUT, R> convert(Function<OUT, R> convertFunction) {
-        return new ConvertExecution<>(this.startPoint, this.then(), this.currentExecutor, convertFunction);
+    public <R> StepExecution<OUT, R> convert(@NonNull Function<OUT, R> convertFunction) {
+        return new ConvertExecution<>(this.taskInfo,
+                this.taskStepInfo,
+                this.startPoint,
+                this.then(),
+                this.currentExecutor,
+                convertFunction
+        );
     }
 
     /**
@@ -120,8 +171,14 @@ public abstract class StepExecution<IN, OUT> {
      * @param deferredMono the deferred mono
      * @return the step execution
      */
-    public StepExecution<OUT, OUT> ifEmptyThen(Supplier<Optional<OUT>> deferredMono) {
-        return new EmptyCheckerExecution<>(this.startPoint, this.then(), this.currentExecutor, deferredMono);
+    public StepExecution<OUT, OUT> ifEmptyThen(@NonNull Supplier<Optional<OUT>> deferredMono) {
+        return new EmptyCheckerExecution<>(this.taskInfo,
+                this.taskStepInfo,
+                this.startPoint,
+                this.then(),
+                this.currentExecutor,
+                deferredMono
+        );
     }
 
     /**
@@ -130,31 +187,119 @@ public abstract class StepExecution<IN, OUT> {
      * @param defaultWhenErrorFunction the default when error function
      * @return the step execution
      */
-    public StepExecution<OUT, OUT> defaultWhenError(Function<Throwable, Optional<OUT>> defaultWhenErrorFunction) {
-        return new DefaultWhenErrorExecution<>(this.startPoint,
+    public StepExecution<OUT, OUT> defaultWhenError(@NonNull Function<Throwable, Optional<OUT>> defaultWhenErrorFunction) {
+        return new DefaultWhenErrorExecution<>(this.taskInfo,
+                this.taskStepInfo,
+                this.startPoint,
                 this.then(),
                 this.currentExecutor,
                 defaultWhenErrorFunction
         );
     }
 
+
     /**
-     * To runner step execution runner.
+     * End task step.
      *
-     * @param exceptionHandler the exception handler
-     * @return the step execution runner
+     * @return the task step
      */
-    public StepExecutionRunner<OUT> toRunner(Consumer<Throwable> exceptionHandler) {
-        return new StepExecutionRunner<>(this.startPoint, this.then(), this.currentExecutor, exceptionHandler);
+    public TaskStep<OUT, OUT> endTaskStep() {
+        StepExecutionRunner<OUT> stepExecutionRunner = new StepExecutionRunner<>(this.taskStepInfo, this.startPoint,
+                this.then(),
+                this.currentExecutor,
+                null
+        );
+        return TaskStep.newNextStep(taskInfo,
+                "END::" + taskStepInfo.getStepName(),
+                stepExecutionRunner,
+                this.currentExecutor
+        );
     }
 
     /**
-     * To runner step execution runner.
+     * Exceptionally then end task step.
      *
-     * @return the step execution runner
+     * @param exceptionHandler the exception handler
+     * @return the task step
      */
-    public StepExecutionRunner<OUT> toRunner() {
-        return new StepExecutionRunner<>(this.startPoint, this.then(), this.currentExecutor, null);
+    public TaskStep<OUT, OUT> exceptionallyThenEndTaskStep(@NonNull Consumer<Throwable> exceptionHandler) {
+        StepExecutionRunner<OUT> stepExecutionRunner = new StepExecutionRunner<>(this.taskStepInfo, this.startPoint,
+                this.then(),
+                this.currentExecutor,
+                exceptionHandler
+        );
+        return TaskStep.newNextStep(taskInfo,
+                "END::" + taskStepInfo.getStepName(),
+                stepExecutionRunner,
+                this.currentExecutor
+        );
+    }
+
+    /**
+     * Next task step.
+     *
+     * @param nextTaskStepName the next task step name
+     * @return the task step
+     */
+    public TaskStep<OUT, OUT> nextTaskStep(@NonNull String nextTaskStepName) {
+        StepExecutionRunner<OUT> stepExecutionRunner = new StepExecutionRunner<>(this.taskStepInfo, this.startPoint,
+                this.then(),
+                this.currentExecutor,
+                null
+        );
+        return TaskStep.newNextStep(taskInfo, nextTaskStepName, stepExecutionRunner, this.currentExecutor);
+    }
+
+    /**
+     * Exceptionally then next task step.
+     *
+     * @param nextTaskStepName the next task step name
+     * @param exceptionHandler the exception handler
+     * @return the task step
+     */
+    public TaskStep<OUT, OUT> exceptionallyThenNextTaskStep(@NonNull String nextTaskStepName,
+                                                            @NonNull Consumer<Throwable> exceptionHandler) {
+        StepExecutionRunner<OUT> stepExecutionRunner = new StepExecutionRunner<>(this.taskStepInfo, this.startPoint,
+                this.then(),
+                this.currentExecutor,
+                exceptionHandler
+        );
+        return TaskStep.newNextStep(taskInfo, nextTaskStepName, stepExecutionRunner, this.currentExecutor);
+    }
+
+    /**
+     * Next task step.
+     *
+     * @param nextTaskStepName the next task step name
+     * @param nextExecutor     the next executor
+     * @return the task step
+     */
+    public TaskStep<OUT, OUT> nextTaskStep(@NonNull String nextTaskStepName, @NonNull Executor nextExecutor) {
+        StepExecutionRunner<OUT> stepExecutionRunner = new StepExecutionRunner<>(this.taskStepInfo, this.startPoint,
+                this.then(),
+                this.currentExecutor,
+                null
+        );
+        return TaskStep.newNextStep(taskInfo, nextTaskStepName, stepExecutionRunner, nextExecutor);
+    }
+
+    /**
+     * Exceptionally then next task step.
+     *
+     * @param nextTaskStepName the next task step name
+     * @param exceptionHandler the exception handler
+     * @param nextExecutor     the next executor
+     * @return the task step
+     */
+    public TaskStep<OUT, OUT> exceptionallyThenNextTaskStep(@NonNull String nextTaskStepName,
+                                                            @NonNull Consumer<Throwable> exceptionHandler,
+                                                            @NonNull Executor nextExecutor) {
+        StepExecutionRunner<OUT> stepExecutionRunner = new StepExecutionRunner<>(this.taskStepInfo, this.startPoint,
+                this.then(),
+                this.currentExecutor,
+                exceptionHandler
+        );
+        return TaskStep.newNextStep(taskInfo, nextTaskStepName, stepExecutionRunner, nextExecutor);
     }
 }
 
@@ -163,44 +308,33 @@ public abstract class StepExecution<IN, OUT> {
  *
  * @param <T> the input data type
  */
+@Slf4j
 class SourceExecution<T> extends StepExecution<T, T> {
 
     /**
      * Instantiates a new Source execution.
      *
-     * @param startPoint the start point
-     * @param source     the source supplier
-     * @param executor   the target executor
+     * @param taskInfo     the task info
+     * @param taskStepInfo the task step info
+     * @param startPoint   the start point
+     * @param source       the source future
+     * @param executor     the target executor
      */
-    protected SourceExecution(CompletableFuture<Void> startPoint, Supplier<Optional<T>> source, Executor executor) {
-
-        super(startPoint,
-                startPoint.thenCompose(aVoid -> {
-                    if (Objects.nonNull(executor)) {
-                        return CompletableFuture.supplyAsync(source, executor);
-                    }
-                    return CompletableFuture.supplyAsync(source);
-                }),
-                executor
-        );
-    }
-
-    /**
-     * Instantiates a new Source execution.
-     *
-     * @param startPoint the start point
-     * @param source     the source future
-     * @param executor   the target executor
-     */
-    protected SourceExecution(CompletableFuture<Void> startPoint,
+    protected SourceExecution(TaskInfo taskInfo,
+                              TaskStepInfo taskStepInfo,
+                              CompletableFuture<Void> startPoint,
                               CompletableFuture<Optional<T>> source,
                               Executor executor) {
-        super(startPoint, startPoint.thenCompose(aVoid -> source), executor);
+        super(taskInfo, taskStepInfo, startPoint, source, executor);
     }
 
     @Override
     public CompletableFuture<Optional<T>> then() {
-        return super.source;
+        log.debug("StepExecution::Assemble::SourceExecution => Task:{},Executor:{}",
+                taskStepInfo.getFullName(),
+                executorToString(this.currentExecutor)
+        );
+        return super.sourceFuture;
     }
 }
 
@@ -209,6 +343,7 @@ class SourceExecution<T> extends StepExecution<T, T> {
  *
  * @param <T> the input data type
  */
+@Slf4j
 class FilterExecution<T> extends StepExecution<T, T> {
 
     private final Predicate<T> predicate;
@@ -216,22 +351,37 @@ class FilterExecution<T> extends StepExecution<T, T> {
     /**
      * Instantiates a new Filter execution.
      *
-     * @param startPoint the start point
-     * @param source     the source future
-     * @param executor   the target executor
-     * @param predicate  the predicate
+     * @param taskInfo     the task info
+     * @param taskStepInfo the task step info
+     * @param startPoint   the start point
+     * @param source       the source future
+     * @param executor     the target executor
+     * @param predicate    the predicate
      */
-    protected FilterExecution(CompletableFuture<Void> startPoint,
+    protected FilterExecution(TaskInfo taskInfo,
+                              TaskStepInfo taskStepInfo,
+                              CompletableFuture<Void> startPoint,
                               CompletableFuture<Optional<T>> source,
                               Executor executor,
                               Predicate<T> predicate) {
-        super(startPoint, source, executor);
+        super(taskInfo, taskStepInfo, startPoint, source, executor);
         this.predicate = predicate;
     }
 
     @Override
     public CompletableFuture<Optional<T>> then() {
-        return super.source.thenApplyAsync(sourceValue -> sourceValue.filter(this.predicate), super.currentExecutor);
+        log.debug("StepExecution::Assemble::FilterExecution => Task:{},Executor:{}",
+                taskStepInfo.getFullName(),
+                executorToString(this.currentExecutor)
+        );
+        return super.sourceFuture.thenApplyAsync(sourceValue -> {
+                    log.debug("StepExecution::Running::FilterExecution => Task:{},Executor:{}",
+                            taskStepInfo,
+                            executorToString(this.currentExecutor)
+                    );
+                    return sourceValue.filter(this.predicate);
+                }, super.currentExecutor
+        );
     }
 }
 
@@ -240,6 +390,7 @@ class FilterExecution<T> extends StepExecution<T, T> {
  *
  * @param <T> the input data type
  */
+@Slf4j
 class ValidatorExecution<T> extends StepExecution<T, T> {
 
     private final Function<T, Optional<RuntimeException>> validatorFunction;
@@ -247,23 +398,35 @@ class ValidatorExecution<T> extends StepExecution<T, T> {
     /**
      * Instantiates a new Validator execution.
      *
+     * @param taskInfo          the task info
+     * @param taskStepInfo      the task step info
      * @param startPoint        the start point
      * @param source            the source future
      * @param executor          the target executor
      * @param validatorFunction the validator function
      */
-    protected ValidatorExecution(CompletableFuture<Void> startPoint,
+    protected ValidatorExecution(TaskInfo taskInfo,
+                                 TaskStepInfo taskStepInfo,
+                                 CompletableFuture<Void> startPoint,
                                  CompletableFuture<Optional<T>> source,
                                  Executor executor,
                                  Function<T, Optional<RuntimeException>> validatorFunction) {
-        super(startPoint, source, executor);
+        super(taskInfo, taskStepInfo, startPoint, source, executor);
         this.validatorFunction = validatorFunction;
     }
 
     @Override
     public CompletableFuture<Optional<T>> then() {
-        return super.source
+        log.debug("StepExecution::Assemble::ValidatorExecution => Task:{},Executor:{}",
+                taskStepInfo.getFullName(),
+                executorToString(this.currentExecutor)
+        );
+        return super.sourceFuture
                 .thenApplyAsync(sourceValue -> {
+                            log.debug("StepExecution::Running::ValidatorExecution => Task:{},Executor:{}",
+                                    taskStepInfo.getFullName(),
+                                    currentExecutor
+                            );
                             Optional<RuntimeException> optionalRuntimeException = sourceValue.flatMap(this.validatorFunction);
                             if (optionalRuntimeException.isPresent()) {
                                 throw optionalRuntimeException.get();
@@ -281,6 +444,7 @@ class ValidatorExecution<T> extends StepExecution<T, T> {
  * @param <T> the input data type
  * @param <R> the other output data type
  */
+@Slf4j
 class TransformExecution<T, R> extends StepExecution<T, R> {
 
     private final Function<T, Supplier<Optional<R>>> transformFunction;
@@ -288,23 +452,35 @@ class TransformExecution<T, R> extends StepExecution<T, R> {
     /**
      * Instantiates a new Transform execution.
      *
+     * @param taskInfo          the task info
+     * @param taskStepInfo      the task step info
      * @param startPoint        the start point
      * @param source            the source future
      * @param executor          the target executor
      * @param transformFunction the transform function
      */
-    protected TransformExecution(CompletableFuture<Void> startPoint,
+    protected TransformExecution(TaskInfo taskInfo,
+                                 TaskStepInfo taskStepInfo,
+                                 CompletableFuture<Void> startPoint,
                                  CompletableFuture<Optional<T>> source,
                                  Executor executor,
                                  Function<T, Supplier<Optional<R>>> transformFunction) {
-        super(startPoint, source, executor);
+        super(taskInfo, taskStepInfo, startPoint, source, executor);
         this.transformFunction = transformFunction;
     }
 
     @Override
     protected CompletableFuture<Optional<R>> then() {
-        return super.source
+        log.debug("StepExecution::Assemble::TransformExecution => Task:{},Executor:{}",
+                taskStepInfo.getFullName(),
+                executorToString(this.currentExecutor)
+        );
+        return super.sourceFuture
                 .thenComposeAsync(sourceValue -> {
+                            log.debug("StepExecution::Running::TransformExecution => Task:{},Executor:{}",
+                                    taskStepInfo.getFullName(),
+                                    currentExecutor
+                            );
                             if (sourceValue.isEmpty()) {
                                 return CompletableFuture.completedFuture(Optional.empty());
                             }
@@ -324,30 +500,46 @@ class TransformExecution<T, R> extends StepExecution<T, R> {
  * @param <T> the input data type
  * @param <R> the output data type
  */
-final class ConvertExecution<T, R> extends StepExecution<T, R> {
+@Slf4j
+class ConvertExecution<T, R> extends StepExecution<T, R> {
 
     private final Function<T, R> convertFunction;
 
     /**
      * Instantiates a new Convert execution.
      *
+     * @param taskInfo        the task info
+     * @param taskStepInfo    the task step info
      * @param startPoint      the start point
      * @param source          the source future
      * @param executor        the target executor
      * @param convertFunction the convert convertFunction
      */
-    protected ConvertExecution(CompletableFuture<Void> startPoint,
+    protected ConvertExecution(TaskInfo taskInfo,
+                               TaskStepInfo taskStepInfo,
+                               CompletableFuture<Void> startPoint,
                                CompletableFuture<Optional<T>> source,
                                Executor executor,
                                Function<T, R> convertFunction) {
-        super(startPoint, source, executor);
+        super(taskInfo, taskStepInfo, startPoint, source, executor);
         this.convertFunction = convertFunction;
     }
 
     @Override
     protected CompletableFuture<Optional<R>> then() {
-        return super.source
-                .thenApplyAsync(sourceValue -> sourceValue.map(convertFunction), super.currentExecutor);
+        log.debug("StepExecution::Assemble::ConvertExecution => Task:{},Executor:{}",
+                taskStepInfo.getFullName(),
+                executorToString(this.currentExecutor)
+        );
+        return super.sourceFuture
+                .thenApplyAsync(sourceValue -> {
+                            log.debug("StepExecution::Running::ConvertExecution => Task:{},Executor:{}",
+                                    taskStepInfo.getFullName(),
+                                    currentExecutor
+                            );
+                            return sourceValue.map(convertFunction);
+                        }, super.currentExecutor
+                );
     }
 }
 
@@ -356,6 +548,7 @@ final class ConvertExecution<T, R> extends StepExecution<T, R> {
  *
  * @param <T> the input data type
  */
+@Slf4j
 class EmptyCheckerExecution<T> extends StepExecution<T, T> {
 
     private final Supplier<Optional<T>> deferredSupplier;
@@ -363,23 +556,35 @@ class EmptyCheckerExecution<T> extends StepExecution<T, T> {
     /**
      * Instantiates a new Empty checker execution.
      *
+     * @param taskInfo         the task info
+     * @param taskStepInfo     the task step info
      * @param startPoint       the start point
      * @param source           the source future
      * @param executor         the target executor
      * @param deferredSupplier the deferred supplier
      */
-    protected EmptyCheckerExecution(CompletableFuture<Void> startPoint,
+    protected EmptyCheckerExecution(TaskInfo taskInfo,
+                                    TaskStepInfo taskStepInfo,
+                                    CompletableFuture<Void> startPoint,
                                     CompletableFuture<Optional<T>> source,
                                     Executor executor,
                                     Supplier<Optional<T>> deferredSupplier) {
-        super(startPoint, source, executor);
+        super(taskInfo, taskStepInfo, startPoint, source, executor);
         this.deferredSupplier = deferredSupplier;
     }
 
     @Override
     protected CompletableFuture<Optional<T>> then() {
-        return super.source
+        log.debug("StepExecution::Assemble::EmptyCheckerExecution => Task:{},Executor:{}",
+                taskStepInfo.getFullName(),
+                executorToString(this.currentExecutor)
+        );
+        return super.sourceFuture
                 .thenComposeAsync(sourceValue -> {
+                            log.debug("StepExecution::Running::EmptyCheckerExecution => Task:{},Executor:{}",
+                                    taskStepInfo.getFullName(),
+                                    currentExecutor
+                            );
                             if (sourceValue.isPresent()) {
                                 return CompletableFuture.completedFuture(sourceValue);
                             }
@@ -397,6 +602,7 @@ class EmptyCheckerExecution<T> extends StepExecution<T, T> {
  *
  * @param <T> the type parameter
  */
+@Slf4j
 class DefaultWhenErrorExecution<T> extends StepExecution<T, T> {
 
     private final Function<Throwable, Optional<T>> defaultWhenErrorFunction;
@@ -405,22 +611,34 @@ class DefaultWhenErrorExecution<T> extends StepExecution<T, T> {
     /**
      * Instantiates a new Default when error execution.
      *
+     * @param taskInfo                 the task info
+     * @param taskStepInfo             the task step info
      * @param startPoint               the start point
      * @param source                   the source
      * @param executor                 the executor
      * @param defaultWhenErrorFunction the default when error function
      */
-    protected DefaultWhenErrorExecution(CompletableFuture<Void> startPoint,
+    protected DefaultWhenErrorExecution(TaskInfo taskInfo,
+                                        TaskStepInfo taskStepInfo,
+                                        CompletableFuture<Void> startPoint,
                                         CompletableFuture<Optional<T>> source,
                                         Executor executor,
                                         Function<Throwable, Optional<T>> defaultWhenErrorFunction) {
-        super(startPoint, source, executor);
+        super(taskInfo, taskStepInfo, startPoint, source, executor);
         this.defaultWhenErrorFunction = defaultWhenErrorFunction;
     }
 
     @Override
     protected CompletableFuture<Optional<T>> then() {
-        return source.exceptionallyAsync(throwable -> {
+        log.debug("StepExecution::Assemble::DefaultWhenErrorExecution => Task:{},Executor:{}",
+                taskStepInfo.getFullName(),
+                currentExecutor
+        );
+        return sourceFuture.exceptionallyAsync(throwable -> {
+                    log.debug("StepExecution::Running::DefaultWhenErrorExecution => Task:{},Executor:{}",
+                            taskStepInfo.getFullName(),
+                            currentExecutor
+                    );
                     if (throwable instanceof CompletionException completionException) {
                         throwable = completionException.getCause();
                     }

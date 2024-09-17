@@ -1,9 +1,13 @@
 
-package pro.chenggang.project.taskscheduler;
+package pro.chenggang.project.taskscheduler.intergration;
 
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import pro.chenggang.project.taskscheduler.Task;
+import pro.chenggang.project.taskscheduler.TaskInfo;
+import pro.chenggang.project.taskscheduler.TaskStep;
 
 import java.util.Optional;
 import java.util.Random;
@@ -21,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @version 1.0.0
  * @since 1.0.0
  */
+@Slf4j
 @Order(Integer.MAX_VALUE)
 public class TaskStepIntegrationTests {
 
@@ -35,7 +40,7 @@ public class TaskStepIntegrationTests {
                 try {
                     simpleRun();
                 } catch (Exception e) {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Result Error:" + e.getMessage());
+                    log.info(Thread.currentThread().getName() + " ==> " + "Result Error:" + e.getMessage());
                 } finally {
                     countDownLatch.countDown();
                 }
@@ -49,45 +54,48 @@ public class TaskStepIntegrationTests {
     void simpleRun() {
         ExecutorService singleThreadExecutor = Executors.newSingleThreadScheduledExecutor(new NameThreadFactory("STEP"));
         try {
-            TaskStep.newTaskStep(
+            Task.newTask("simpleRun")
+                    .newTaskStep(
+                            "Step1",
                             () -> {
-                                System.out.println(Thread.currentThread().getName() + " ==> " + "Step: 1");
+                                log.info(Thread.currentThread().getName() + " ==> " + "Step: 1");
                                 try {
                                     TimeUnit.SECONDS.sleep(1);
                                 } catch (InterruptedException e) {
                                     throw new RuntimeException(e);
                                 }
-                                System.out.println(Thread.currentThread().getName() + " ==> " + "Step: 2");
+                                log.info(Thread.currentThread().getName() + " ==> " + "Step: 2");
                                 return Optional.of(String.valueOf(new Random().nextInt(14)));
                             },
                             singleThreadExecutor
                     )
                     .stepExecution()
                     .convert(value -> {
-                        System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Convert 1");
+                        log.info(Thread.currentThread().getName() + " ==> " + "Step: Convert 1");
                         try {
                             TimeUnit.SECONDS.sleep(1);
                         } catch (InterruptedException e) {
                             throw new RuntimeException(e);
                         }
                         String stringValue = value + new Random().nextInt(14);
-                        System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Convert 2");
+                        log.info(Thread.currentThread().getName() + " ==> " + "Step: Convert 2");
                         return stringValue;
                     })
                     .filter(value -> {
-                        System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Filter 1");
+                        log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 1");
                         try {
                             TimeUnit.SECONDS.sleep(1);
                         } catch (InterruptedException e) {
                             throw new RuntimeException(e);
                         }
-                        System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Filter 2");
+                        log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 2");
                         return Integer.parseInt(value) % 2 == 0;
                     })
                     .validate(value -> {
-                        System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Validate");
+                        log.info(Thread.currentThread().getName() + " ==> " + "Step: Validate");
                         if (Integer.parseInt(value) % 4 == 0) {
-                            System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Validate with error");
+                            log.info(Thread.currentThread()
+                                    .getName() + " ==> " + "Step: Validate with error");
                             return Optional.of(new RuntimeException(Thread.currentThread()
                                     .getName() + " ==> " + "Mod 4 is zero, value :" + value));
                         }
@@ -95,21 +103,22 @@ public class TaskStepIntegrationTests {
                     })
                     .ifEmptyThen(() -> Optional.of("-1"))
                     .transform(value -> () -> {
-                        System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Transform 1");
+                        log.info(Thread.currentThread().getName() + " ==> " + "Step: Transform 1");
                         try {
                             TimeUnit.SECONDS.sleep(1);
                         } catch (InterruptedException e) {
                             throw new RuntimeException(e);
                         }
-                        System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Transform 2");
+                        log.info(Thread.currentThread().getName() + " ==> " + "Step: Transform 2");
                         return Optional.of(Integer.parseInt(value));
                     })
-                    .toRunner()
-                    .run()
+                    .endTaskStep()
+                    .runAllSteps()
                     .ifPresentOrElse(
-                            result -> System.out.println(Thread.currentThread().getName() + " ==> " + "Result:" + result),
+                            result -> log.info(Thread.currentThread()
+                                    .getName() + " ==> " + "Result:" + result),
                             () -> {
-                                System.out.println(Thread.currentThread().getName() + " ==> " + "Result is empty");
+                                log.info(Thread.currentThread().getName() + " ==> " + "Result is empty");
                             }
                     );
         } catch (RuntimeException e) {
@@ -122,45 +131,47 @@ public class TaskStepIntegrationTests {
     @Test
     void simpleRunAndHandleException() {
         ExecutorService singleThreadExecutor = Executors.newSingleThreadScheduledExecutor(new NameThreadFactory("STEP"));
-        TaskStep.newTaskStep(
+        Task.newTask("simpleRunAndHandleException")
+                .newTaskStep(
+                        "Step1",
                         () -> {
-                            System.out.println(Thread.currentThread().getName() + " ==> " + "Step: 1");
+                            log.info(Thread.currentThread().getName() + " ==> " + "Step: 1");
                             try {
                                 TimeUnit.SECONDS.sleep(1);
                             } catch (InterruptedException e) {
                                 throw new RuntimeException(e);
                             }
-                            System.out.println(Thread.currentThread().getName() + " ==> " + "Step: 2");
+                            log.info(Thread.currentThread().getName() + " ==> " + "Step: 2");
                             return Optional.of(String.valueOf(new Random().nextInt(14)));
                         },
                         singleThreadExecutor
                 )
                 .stepExecution()
                 .convert(value -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Convert 1");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Convert 1");
                     try {
                         TimeUnit.SECONDS.sleep(1);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
                     String stringValue = value + new Random().nextInt(14);
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Convert 2");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Convert 2");
                     return stringValue;
                 })
                 .filter(value -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Filter 1");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 1");
                     try {
                         TimeUnit.SECONDS.sleep(1);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Filter 2");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 2");
                     return Integer.parseInt(value) % 2 == 0;
                 })
                 .validate(value -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Validate");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Validate");
                     if (Integer.parseInt(value) > 0) {
-                        System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Validate with error");
+                        log.info(Thread.currentThread().getName() + " ==> " + "Step: Validate with error");
                         return Optional.of(new RuntimeException(Thread.currentThread()
                                 .getName() + " ==> " + "Mod 4 is zero, value :" + value));
                     }
@@ -168,30 +179,31 @@ public class TaskStepIntegrationTests {
                 })
                 .ifEmptyThen(() -> Optional.of("-1"))
                 .transform(value -> () -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Transform 1");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Transform 1");
                     try {
                         TimeUnit.SECONDS.sleep(1);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Transform 2");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Transform 2");
                     return Optional.of(Integer.parseInt(value));
                 })
                 .defaultWhenError(throwable -> {
-                    if(throwable instanceof IllegalStateException ){
-                        System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Default when error : " + throwable);
+                    if (throwable instanceof IllegalStateException) {
+                        log.info(Thread.currentThread()
+                                .getName() + " ==> " + "Step: Default when error : " + throwable);
                         return Optional.of(-2);
                     }
                     throw new CompletionException(throwable);
                 })
-                .toRunner(throwable -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Runner error:" + throwable);
+                .exceptionallyThenEndTaskStep(throwable -> {
+                    log.info(Thread.currentThread().getName() + " ==> " + "Runner error:" + throwable);
                 })
-                .run()
+                .runAllSteps()
                 .ifPresentOrElse(
-                        result -> System.out.println(Thread.currentThread().getName() + " ==> " + "Result:" + result),
+                        result -> log.info(Thread.currentThread().getName() + " ==> " + "Result:" + result),
                         () -> {
-                            System.out.println(Thread.currentThread().getName() + " ==> " + "Result is empty");
+                            log.info(Thread.currentThread().getName() + " ==> " + "Result is empty");
                         }
                 );
         singleThreadExecutor.shutdown();
@@ -200,45 +212,47 @@ public class TaskStepIntegrationTests {
     @Test
     void noRun() {
         ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor(new NameThreadFactory("STEP"));
-        StepExecutionRunner<Integer> runner = TaskStep.newTaskStep(
+        TaskInfo taskInfo = Task.newTask("noRun")
+                .newTaskStep(
+                        "Step1",
                         () -> {
-                            System.out.println(Thread.currentThread().getName() + " ==> " + "Step: 1");
+                            log.info(Thread.currentThread().getName() + " ==> " + "Step: 1");
                             try {
                                 TimeUnit.SECONDS.sleep(1);
                             } catch (InterruptedException e) {
                                 throw new RuntimeException(e);
                             }
-                            System.out.println(Thread.currentThread().getName() + " ==> " + "Step: 2");
+                            log.info(Thread.currentThread().getName() + " ==> " + "Step: 2");
                             return Optional.of(String.valueOf(new Random().nextInt(14)));
                         },
                         singleThreadExecutor
                 )
                 .stepExecution()
                 .convert(value -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Convert 1");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Convert 1");
                     try {
                         TimeUnit.SECONDS.sleep(1);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
                     String stringValue = value + new Random().nextInt(14);
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Convert 2");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Convert 2");
                     return stringValue;
                 })
                 .filter(value -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Filter 1");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 1");
                     try {
                         TimeUnit.SECONDS.sleep(1);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Filter 2");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 2");
                     return Integer.parseInt(value) % 2 == 0;
                 })
                 .validate(value -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Validate");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Validate");
                     if (Integer.parseInt(value) % 4 == 0) {
-                        System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Validate with error");
+                        log.info(Thread.currentThread().getName() + " ==> " + "Step: Validate with error");
                         return Optional.of(new RuntimeException(Thread.currentThread()
                                 .getName() + " ==> " + "Mod 4 is zero, value :" + value));
                     }
@@ -246,64 +260,65 @@ public class TaskStepIntegrationTests {
                 })
                 .ifEmptyThen(() -> Optional.of("-1"))
                 .transform(value -> () -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Transform 1");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Transform 1");
                     try {
                         TimeUnit.SECONDS.sleep(1);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Transform 2");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Transform 2");
                     return Optional.of(Integer.parseInt(value));
                 })
-                .toRunner();
-        runner.cancel();
-//        runner.run();
-        System.out.println(singleThreadExecutor);
+                .endTaskStep()
+                .cancelAllSteps();
+        taskInfo.getTaskStepInfos().forEach(taskStepInfo -> System.out.println(taskStepInfo.summary()));
         singleThreadExecutor.shutdown();
     }
 
     @Test
     void simpleRunWithDefaultExecutor() { // TODO
         ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor(new NameThreadFactory("STEP"));
-        StepExecutionRunner<Integer> runner = TaskStep.newTaskStep(
+        TaskInfo taskInfo = Task.newTask("simpleRunWithDefaultExecutor")
+                .newTaskStep(
+                        "Step1",
                         () -> {
-                            System.out.println(Thread.currentThread().getName() + " ==> " + "Step: 1");
+                            log.info(Thread.currentThread().getName() + " ==> " + "Step: 1");
                             try {
                                 TimeUnit.SECONDS.sleep(1);
                             } catch (InterruptedException e) {
                                 throw new RuntimeException(e);
                             }
-                            System.out.println(Thread.currentThread().getName() + " ==> " + "Step: 2");
+                            log.info(Thread.currentThread().getName() + " ==> " + "Step: 2");
                             return Optional.of(String.valueOf(new Random().nextInt(14)));
                         },
                         singleThreadExecutor
                 )
                 .stepExecution()
                 .convert(value -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Convert 1");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Convert 1");
                     try {
                         TimeUnit.SECONDS.sleep(1);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
                     String stringValue = value + new Random().nextInt(14);
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Convert 2");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Convert 2");
                     return stringValue;
                 })
                 .filter(value -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Filter 1");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 1");
                     try {
                         TimeUnit.SECONDS.sleep(1);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Filter 2");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 2");
                     return Integer.parseInt(value) % 2 == 0;
                 })
                 .validate(value -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Validate");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Validate");
                     if (Integer.parseInt(value) % 4 == 0) {
-                        System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Validate with error");
+                        log.info(Thread.currentThread().getName() + " ==> " + "Step: Validate with error");
                         return Optional.of(new RuntimeException(Thread.currentThread()
                                 .getName() + " ==> " + "Mod 4 is zero, value :" + value));
                     }
@@ -311,19 +326,18 @@ public class TaskStepIntegrationTests {
                 })
                 .ifEmptyThen(() -> Optional.of("-1"))
                 .transform(value -> () -> {
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Transform 1");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Transform 1");
                     try {
                         TimeUnit.SECONDS.sleep(1);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    System.out.println(Thread.currentThread().getName() + " ==> " + "Step: Transform 2");
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Transform 2");
                     return Optional.of(Integer.parseInt(value));
                 })
-                .toRunner();
-        runner.cancel();
-//        runner.run();
-        System.out.println(singleThreadExecutor);
+                .endTaskStep()
+                .cancelAllSteps();
+        taskInfo.getTaskStepInfos().forEach(taskStepInfo -> System.out.println(taskStepInfo.summary()));
         singleThreadExecutor.shutdown();
     }
 
@@ -344,5 +358,91 @@ public class TaskStepIntegrationTests {
             thread.setDaemon(true);
             return thread;
         }
+    }
+
+    @Test
+    void testMultipleSteps() {
+        ExecutorService singleThreadExecutor1 = Executors.newSingleThreadExecutor(new NameThreadFactory("STEP1"));
+        ExecutorService singleThreadExecutor2 = Executors.newSingleThreadExecutor(new NameThreadFactory("STEP2"));
+        TaskStep<Integer, Integer> taskStep = Task.newTask("testMultipleSteps")
+                .newTaskStep(
+                        "Step1",
+                        () -> {
+                            log.info(Thread.currentThread().getName() + " ==> " + "Step: 1");
+                            try {
+                                TimeUnit.SECONDS.sleep(1);
+                            } catch (InterruptedException e) {
+                                throw new RuntimeException(e);
+                            }
+                            log.info(Thread.currentThread().getName() + " ==> " + "Step: 2");
+                            return Optional.of(String.valueOf(new Random().nextInt(14)));
+                        },
+                        singleThreadExecutor1
+                )
+                .stepExecution()
+                .convert(value -> {
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Convert 1");
+                    try {
+                        TimeUnit.SECONDS.sleep(1);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    String stringValue = value + new Random().nextInt(14);
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Convert 2");
+                    return stringValue;
+                })
+                .filter(value -> {
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 1");
+                    try {
+                        TimeUnit.SECONDS.sleep(1);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 2");
+                    return Integer.parseInt(value) % 2 == 0;
+                })
+                .validate(value -> {
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Validate");
+                    if (Integer.parseInt(value) % 4 == 0) {
+                        log.info(Thread.currentThread().getName() + " ==> " + "Step: Validate with error");
+                        return Optional.of(new RuntimeException(Thread.currentThread()
+                                .getName() + " ==> " + "Mod 4 is zero, value :" + value));
+                    }
+                    return Optional.empty();
+                })
+                .ifEmptyThen(() -> Optional.of("-1"))
+                .transform(value -> () -> {
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Transform 1");
+                    try {
+                        TimeUnit.SECONDS.sleep(1);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Transform 2");
+                    return Optional.of(Integer.parseInt(value));
+                })
+                .exceptionallyThenNextTaskStep("Step2",
+                        throwable -> {
+                            log.info(Thread.currentThread().getName() + " ==> " + "Runner error:" + throwable);
+                        },
+                        singleThreadExecutor2
+                )
+                .stepExecution()
+                .filter(value -> {
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 1");
+                    try {
+                        TimeUnit.SECONDS.sleep(1);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    log.info(Thread.currentThread().getName() + " ==> " + "Step: Filter 2");
+                    return value % 3 == 0;
+                })
+                .ifEmptyThen(() -> Optional.of(-1))
+                .endTaskStep();
+        taskStep.runAllSteps();
+        taskStep.getTaskInfo().getTaskStepInfos().forEach(taskStepInfo -> System.out.println(taskStepInfo.summary()));
+        singleThreadExecutor1.shutdown();
+        singleThreadExecutor2.shutdown();
     }
 }
